@@ -1,0 +1,2 @@
+This file was created to test the repo write path.
+If you see the GitHub approval prompt, that means the repo is attached and write tools are active.
