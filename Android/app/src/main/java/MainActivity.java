@@ -2,6 +2,7 @@ package com.aminethejurk.cornthiefmaze;
 
 import android.app.Activity;
 import android.graphics.Color;
+import android.graphics.PointF;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -21,8 +22,17 @@ import android.widget.RelativeLayout;
 public class MainActivity extends Activity {
     private WebView webView;
     private View controlsContainer;
+    private View toggleButtonContainer;
     private LocalAssetServer localAssetServer;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
+
+    private final PointF joystickCenter = new PointF();
+    private final PointF joystickThumb = new PointF();
+    private boolean joystickActive = false;
+    private boolean upPressed = false;
+    private boolean downPressed = false;
+    private boolean leftPressed = false;
+    private boolean rightPressed = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -59,6 +69,9 @@ public class MainActivity extends Activity {
 
         rootLayout.addView(webView);
 
+        toggleButtonContainer = buildToggleButton();
+        rootLayout.addView(toggleButtonContainer);
+
         controlsContainer = buildControlsOverlay();
         rootLayout.addView(controlsContainer);
 
@@ -90,6 +103,35 @@ public class MainActivity extends Activity {
         webView.loadUrl("http://127.0.0.1:" + port + "/index.html");
     }
 
+    private View buildToggleButton() {
+        FrameLayout container = new FrameLayout(this);
+        RelativeLayout.LayoutParams params = new RelativeLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+        );
+        params.leftMargin = 24;
+        params.topMargin = 24;
+        container.setLayoutParams(params);
+
+        Button toggleButton = new Button(this);
+        toggleButton.setText("Hide Buttons");
+        toggleButton.setTextColor(Color.WHITE);
+        toggleButton.setBackgroundColor(0xFF1E1E1E);
+        toggleButton.setAlpha(0.95f);
+        FrameLayout.LayoutParams toggleParams = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+        );
+        toggleButton.setLayoutParams(toggleParams);
+        toggleButton.setOnClickListener(v -> {
+            boolean visible = controlsContainer.getVisibility() == View.VISIBLE;
+            controlsContainer.setVisibility(visible ? View.GONE : View.VISIBLE);
+            toggleButton.setText(visible ? "Re-Appear Buttons" : "Hide Buttons");
+        });
+        container.addView(toggleButton);
+        return container;
+    }
+
     private View buildControlsOverlay() {
         FrameLayout container = new FrameLayout(this);
         RelativeLayout.LayoutParams params = new RelativeLayout.LayoutParams(
@@ -98,34 +140,16 @@ public class MainActivity extends Activity {
         );
         container.setLayoutParams(params);
 
-        Button toggleButton = new Button(this);
-        toggleButton.setText("Hide Controls");
-        toggleButton.setTextColor(Color.WHITE);
-        toggleButton.setBackgroundColor(0xFF1E1E1E);
-        toggleButton.setAlpha(0.9f);
-        FrameLayout.LayoutParams toggleParams = new FrameLayout.LayoutParams(
+        LinearLayout actionPanel = new LinearLayout(this);
+        actionPanel.setOrientation(LinearLayout.VERTICAL);
+        FrameLayout.LayoutParams actionParams = new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
         );
-        toggleParams.leftMargin = 24;
-        toggleParams.topMargin = 28;
-        toggleButton.setLayoutParams(toggleParams);
-        toggleButton.setOnClickListener(v -> {
-            controlsContainer.setVisibility(controlsContainer.getVisibility() == View.VISIBLE ? View.GONE : View.VISIBLE);
-            toggleButton.setText(controlsContainer.getVisibility() == View.VISIBLE ? "Hide Controls" : "Show Controls");
-        });
-        container.addView(toggleButton);
-
-        LinearLayout rightPanel = new LinearLayout(this);
-        rightPanel.setOrientation(LinearLayout.VERTICAL);
-        FrameLayout.LayoutParams rightParams = new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-        );
-        rightParams.gravity = Gravity.RIGHT | Gravity.BOTTOM;
-        rightParams.rightMargin = 26;
-        rightParams.bottomMargin = 26;
-        rightPanel.setLayoutParams(rightParams);
+        actionParams.gravity = Gravity.RIGHT | Gravity.BOTTOM;
+        actionParams.rightMargin = 26;
+        actionParams.bottomMargin = 26;
+        actionPanel.setLayoutParams(actionParams);
 
         LinearLayout row1 = new LinearLayout(this);
         row1.setOrientation(LinearLayout.HORIZONTAL);
@@ -140,11 +164,119 @@ public class MainActivity extends Activity {
         row2.addView(makeActionButton("Dive", "K", "KeyK", false, 110));
         row2.addView(makeActionButton("P", "P", "KeyP", false, 110));
 
-        rightPanel.addView(row1);
-        rightPanel.addView(row2);
-        container.addView(rightPanel);
+        actionPanel.addView(row1);
+        actionPanel.addView(row2);
+        container.addView(actionPanel);
+
+        FrameLayout joystickContainer = buildJoystick();
+        FrameLayout.LayoutParams joystickParams = new FrameLayout.LayoutParams(
+                180,
+                180
+        );
+        joystickParams.gravity = Gravity.LEFT | Gravity.BOTTOM;
+        joystickParams.leftMargin = 30;
+        joystickParams.bottomMargin = 24;
+        joystickContainer.setLayoutParams(joystickParams);
+        container.addView(joystickContainer);
 
         return container;
+    }
+
+    private FrameLayout buildJoystick() {
+        FrameLayout base = new FrameLayout(this);
+        base.setBackgroundColor(Color.argb(120, 40, 40, 40));
+        base.setClipToOutline(true);
+
+        FrameLayout.LayoutParams baseParams = new FrameLayout.LayoutParams(
+                180,
+                180
+        );
+        base.setLayoutParams(baseParams);
+        base.setOnTouchListener((view, event) -> {
+            switch (event.getActionMasked()) {
+                case MotionEvent.ACTION_DOWN:
+                case MotionEvent.ACTION_MOVE: {
+                    float centerX = view.getWidth() / 2f;
+                    float centerY = view.getHeight() / 2f;
+                    float dx = event.getX() - centerX;
+                    float dy = event.getY() - centerY;
+                    float distance = (float) Math.sqrt(dx * dx + dy * dy);
+                    float maxDistance = view.getWidth() * 0.32f;
+
+                    if (distance > maxDistance) {
+                        float scale = maxDistance / distance;
+                        dx *= scale;
+                        dy *= scale;
+                    }
+
+                    joystickCenter.set(centerX, centerY);
+                    joystickThumb.set(centerX + dx, centerY + dy);
+                    updateJoystickState(dx, dy, true);
+                    return true;
+                }
+                case MotionEvent.ACTION_UP:
+                case MotionEvent.ACTION_CANCEL:
+                    joystickThumb.set(view.getWidth() / 2f, view.getHeight() / 2f);
+                    updateJoystickState(0f, 0f, false);
+                    return true;
+                default:
+                    return false;
+            }
+        });
+
+        View ring = new View(this);
+        ring.setBackgroundColor(Color.argb(170, 70, 70, 70));
+        FrameLayout.LayoutParams ringParams = new FrameLayout.LayoutParams(
+                140,
+                140,
+                Gravity.CENTER
+        );
+        ring.setLayoutParams(ringParams);
+        ring.setBackgroundResource(android.R.drawable.presence_invisible);
+        ring.setAlpha(0.85f);
+        base.addView(ring);
+
+        View thumb = new View(this);
+        thumb.setBackgroundColor(Color.argb(220, 255, 255, 255));
+        FrameLayout.LayoutParams thumbParams = new FrameLayout.LayoutParams(
+                52,
+                52,
+                Gravity.CENTER
+        );
+        thumb.setLayoutParams(thumbParams);
+        base.addView(thumb);
+
+        base.setTag(thumb);
+        return base;
+    }
+
+    private void updateJoystickState(float dx, float dy, boolean active) {
+        boolean newUp = dy < -16;
+        boolean newDown = dy > 16;
+        boolean newLeft = dx < -16;
+        boolean newRight = dx > 16;
+
+        if (!active) {
+            newUp = false;
+            newDown = false;
+            newLeft = false;
+            newRight = false;
+        }
+
+        setDirectionalKey("ArrowUp", newUp, upPressed);
+        setDirectionalKey("ArrowDown", newDown, downPressed);
+        setDirectionalKey("ArrowLeft", newLeft, leftPressed);
+        setDirectionalKey("ArrowRight", newRight, rightPressed);
+
+        upPressed = newUp;
+        downPressed = newDown;
+        leftPressed = newLeft;
+        rightPressed = newRight;
+    }
+
+    private void setDirectionalKey(String key, boolean pressed, boolean wasPressed) {
+        if (pressed == wasPressed) return;
+        triggerKeyEvent(key, key, false, pressed);
     }
 
     private Button makeActionButton(String text, final String keyName, final String codeName,
