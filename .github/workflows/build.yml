@@ -34,7 +34,7 @@ jobs:
       - name: Build debug APK
         working-directory: Android
         shell: bash
-        run: ./gradlew assembleDebug --stacktrace
+        run: chmod 755 gradlew && ./gradlew assembleDebug --stacktrace
 
       - name: Upload debug APK artifact
         if: success()
