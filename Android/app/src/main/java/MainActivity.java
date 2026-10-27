@@ -18,18 +18,10 @@ import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.RelativeLayout;
 
-import com.chaquo.python.Python;
-import com.chaquo.python.android.AndroidPlatform;
-
-import java.io.File;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
-
 public class MainActivity extends Activity {
     private WebView webView;
     private View controlsContainer;
+    private LocalAssetServer localAssetServer;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
 
     @Override
@@ -89,66 +81,13 @@ public class MainActivity extends Activity {
 
         setContentView(rootLayout);
 
-        copyAssetsToFilesDir("www");
-        copyAssetsToFilesDir("python");
-        startPythonServer();
-        webView.loadUrl("http://localhost:9090/index.html");
+        startLocalGameServer();
     }
 
-    private void copyAssetsToFilesDir(String relativePath) {
-        File targetDir = new File(getFilesDir(), relativePath);
-        if (targetDir.exists()) {
-            return;
-        }
-
-        try {
-            String[] entries = getAssets().list(relativePath);
-            if (entries == null || entries.length == 0) {
-                return;
-            }
-
-            targetDir.mkdirs();
-            for (String entry : entries) {
-                String src = relativePath + "/" + entry;
-                String[] nested = getAssets().list(src);
-                if (nested != null && nested.length > 0) {
-                    copyAssetsToFilesDir(src);
-                } else {
-                    InputStream in = getAssets().open(src);
-                    File outFile = new File(getFilesDir(), src);
-                    File parent = outFile.getParentFile();
-                    if (parent != null) {
-                        parent.mkdirs();
-                    }
-
-                    OutputStream out = new FileOutputStream(outFile);
-                    byte[] buffer = new byte[4096];
-                    int read;
-                    while ((read = in.read(buffer)) != -1) {
-                        out.write(buffer, 0, read);
-                    }
-                    in.close();
-                    out.close();
-                }
-            }
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-    }
-
-    private void startPythonServer() {
-        File gameDir = new File(getFilesDir(), "www");
-        File scriptPath = new File(getFilesDir(), "python/serve_local.py");
-
-        if (!Python.isStarted()) {
-            Python.start(new AndroidPlatform(this));
-        }
-
-        Python python = Python.getInstance();
-        python.getModule("os").callAttr(
-                "system",
-                "python " + scriptPath.getAbsolutePath() + " " + gameDir.getAbsolutePath() + " 9090 >/dev/null 2>&1 &"
-        );
+    private void startLocalGameServer() {
+        localAssetServer = new LocalAssetServer(getAssets(), "www");
+        int port = localAssetServer.start();
+        webView.loadUrl("http://127.0.0.1:" + port + "/index.html");
     }
 
     private View buildControlsOverlay() {
@@ -252,5 +191,13 @@ public class MainActivity extends Activity {
                 + "bubbles: true, cancelable: true, clientX: " + Math.round(x) + ", clientY: " + Math.round(y) + ", button: 0});"
                 + "document.dispatchEvent(evt);" + "}catch(err){}})();";
         webView.loadUrl("javascript:" + js);
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        if (localAssetServer != null) {
+            localAssetServer.stop();
+        }
     }
 }
