@@ -1,0 +1,46 @@
+name: Android Debug Build
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  debug-build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Validate Android project exists
+        shell: bash
+        run: |
+          if [ ! -f Android/gradlew ]; then
+            echo "Android/gradlew not found. The Android Gradle project must exist under the Android folder."
+            exit 1
+          fi
+
+      - name: Build debug APK
+        working-directory: Android
+        shell: bash
+        run: ./gradlew assembleDebug --stacktrace
+
+      - name: Upload debug APK artifact
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-debug-apk
+          path: |
+            Android/app/build/outputs/apk/debug/*.apk
+            Android/app/build/outputs/bundle/debug/*.aab
