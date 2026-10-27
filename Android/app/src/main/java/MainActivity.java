@@ -1,6 +1,7 @@
 package com.aminethejurk.cornthiefmaze;
 
 import android.app.Activity;
+import android.content.res.AssetManager;
 import android.graphics.Color;
 import android.os.Bundle;
 import android.os.Handler;
@@ -18,21 +19,19 @@ import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.RelativeLayout;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.net.HttpURLConnection;
-import java.net.URL;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Map;
-import java.util.Set;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.net.InetSocketAddress;
+import java.net.ServerSocket;
+import java.net.Socket;
+import java.nio.charset.StandardCharsets;
 
 public class MainActivity extends Activity {
     private WebView webView;
     private View controlsContainer;
-    private boolean controlsVisible = true;
-    private final Map<String, Boolean> activeKeys = new HashMap<>();
-    private final Set<String> pressedDirectionalKeys = new HashSet<>();
-    private int slotIndex = 0;
+    private ServerThread serverThread;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
 
     @Override
@@ -49,6 +48,7 @@ public class MainActivity extends Activity {
         );
         webView.setLayoutParams(webParams);
         webView.setBackgroundColor(Color.BLACK);
+
         WebSettings settings = webView.getSettings();
         settings.setJavaScriptEnabled(true);
         settings.setAllowFileAccess(true);
@@ -66,14 +66,6 @@ public class MainActivity extends Activity {
 
         webView.setWebChromeClient(new WebChromeClient());
         webView.setWebViewClient(new WebViewClient());
-
-        String servedUrl = "http://localhost:9090/index.html";
-        String fallbackUrl = "file:///android_asset/www/index.html";
-        if (canReachUrl(servedUrl)) {
-            webView.loadUrl(servedUrl);
-        } else {
-            webView.loadUrl(fallbackUrl);
-        }
 
         rootLayout.addView(webView);
 
@@ -98,6 +90,14 @@ public class MainActivity extends Activity {
         });
 
         setContentView(rootLayout);
+
+        startLocalGameServer();
+        webView.loadUrl("http://localhost:9090/index.html");
+    }
+
+    private void startLocalGameServer() {
+        serverThread = new ServerThread(getAssets());
+        serverThread.start();
     }
 
     private View buildControlsOverlay() {
@@ -121,28 +121,13 @@ public class MainActivity extends Activity {
         toggleParams.topMargin = 28;
         toggleButton.setLayoutParams(toggleParams);
         toggleButton.setOnClickListener(v -> {
-            controlsVisible = !controlsVisible;
-            controlsContainer.setVisibility(controlsVisible ? View.VISIBLE : View.GONE);
-            toggleButton.setText(controlsVisible ? "Hide Controls" : "Show Controls");
+            controlsContainer.setVisibility(controlsContainer.getVisibility() == View.VISIBLE ? View.GONE : View.VISIBLE);
+            toggleButton.setText(controlsContainer.getVisibility() == View.VISIBLE ? "Hide Controls" : "Show Controls");
         });
         container.addView(toggleButton);
 
-        JoystickView joystickView = new JoystickView(this, (x, y) -> {
-            applyDirectionalInputs(x, y);
-        });
-        FrameLayout.LayoutParams joystickParams = new FrameLayout.LayoutParams(
-                210,
-                210
-        );
-        joystickParams.leftMargin = 28;
-        joystickParams.bottomMargin = 26;
-        joystickParams.gravity = Gravity.BOTTOM | Gravity.LEFT;
-        joystickView.setLayoutParams(joystickParams);
-        container.addView(joystickView);
-
-        LinearLayout rightColumn = new LinearLayout(this);
-        rightColumn.setOrientation(LinearLayout.VERTICAL);
-        rightColumn.setGravity(Gravity.CENTER);
+        LinearLayout rightPanel = new LinearLayout(this);
+        rightPanel.setOrientation(LinearLayout.VERTICAL);
         FrameLayout.LayoutParams rightParams = new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
@@ -150,31 +135,24 @@ public class MainActivity extends Activity {
         rightParams.gravity = Gravity.RIGHT | Gravity.BOTTOM;
         rightParams.rightMargin = 26;
         rightParams.bottomMargin = 26;
-        rightColumn.setLayoutParams(rightParams);
+        rightPanel.setLayoutParams(rightParams);
 
-        Button runButton = makeActionButton("Run", "Shift", "ShiftLeft", true, 80);
-        Button ventButton = makeActionButton("Vent", "V", "KeyV", false, 80);
-        Button slotButton = makeActionButton("Slot", "1", "Digit1", false, 80);
-        slotButton.setOnClickListener(v -> {
-            slotIndex = (slotIndex + 1) % 5;
-            int slotNumber = slotIndex + 1;
-            triggerKeyPress(String.valueOf(slotNumber), "Digit" + slotNumber, false);
-            slotButton.setText("Slot (" + slotNumber + ")");
-        });
+        LinearLayout row1 = new LinearLayout(this);
+        row1.setOrientation(LinearLayout.HORIZONTAL);
+        row1.addView(makeActionButton("Run", "Shift", "ShiftLeft", true, 110));
+        row1.addView(makeActionButton("Vent", "V", "KeyV", false, 110));
+        row1.addView(makeActionButton("Slot", "1", "Digit1", false, 110));
+        row1.addView(makeActionButton("Use", "E", "KeyE", false, 110));
 
-        Button useButton = makeActionButton("Use", "E", "KeyE", false, 80);
-        Button mapButton = makeActionButton("Map", "M", "KeyM", false, 80);
-        Button diveButton = makeActionButton("Dive", "K", "KeyK", false, 80);
-        Button pButton = makeActionButton("P", "P", "KeyP", false, 80);
+        LinearLayout row2 = new LinearLayout(this);
+        row2.setOrientation(LinearLayout.HORIZONTAL);
+        row2.addView(makeActionButton("Map", "M", "KeyM", false, 110));
+        row2.addView(makeActionButton("Dive", "K", "KeyK", false, 110));
+        row2.addView(makeActionButton("P", "P", "KeyP", false, 110));
 
-        rightColumn.addView(runButton);
-        rightColumn.addView(ventButton);
-        rightColumn.addView(slotButton);
-        rightColumn.addView(useButton);
-        rightColumn.addView(mapButton);
-        rightColumn.addView(diveButton);
-        rightColumn.addView(pButton);
-        container.addView(rightColumn);
+        rightPanel.addView(row1);
+        rightPanel.addView(row2);
+        container.addView(rightPanel);
 
         return container;
     }
@@ -188,10 +166,11 @@ public class MainActivity extends Activity {
         button.setMinWidth(width);
         button.setMinHeight(64);
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
+                0,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                1f
         );
-        params.setMargins(0, 8, 0, 8);
+        params.setMargins(8, 8, 8, 8);
         button.setLayoutParams(params);
         button.setOnClickListener(v -> triggerKeyPress(keyName, codeName, shiftKey));
         return button;
@@ -210,48 +189,6 @@ public class MainActivity extends Activity {
         webView.loadUrl("javascript:" + js);
     }
 
-    private void applyDirectionalInputs(float x, float y) {
-        boolean w = y < -0.25f;
-        boolean s = y > 0.25f;
-        boolean a = x < -0.25f;
-        boolean d = x > 0.25f;
-
-        updateDirectionalKey("W", "KeyW", w);
-        updateDirectionalKey("S", "KeyS", s);
-        updateDirectionalKey("A", "KeyA", a);
-        updateDirectionalKey("D", "KeyD", d);
-    }
-
-    private void updateDirectionalKey(String key, String code, boolean shouldBePressed) {
-        String mapKey = key + "|" + code;
-        if (shouldBePressed) {
-            if (!pressedDirectionalKeys.contains(mapKey)) {
-                pressedDirectionalKeys.add(mapKey);
-                triggerKeyEvent(key, code, false, true);
-            }
-        } else {
-            if (pressedDirectionalKeys.contains(mapKey)) {
-                pressedDirectionalKeys.remove(mapKey);
-                triggerKeyEvent(key, code, false, false);
-            }
-        }
-    }
-
-    private boolean canReachUrl(String urlString) {
-        try {
-            URL url = new URL(urlString);
-            HttpURLConnection connection = (HttpURLConnection) url.openConnection();
-            connection.setConnectTimeout(250);
-            connection.setReadTimeout(250);
-            connection.setRequestMethod("HEAD");
-            connection.connect();
-            int responseCode = connection.getResponseCode();
-            return responseCode >= 200 && responseCode < 500;
-        } catch (IOException e) {
-            return false;
-        }
-    }
-
     private void sendMouseEvent(float x, float y, boolean down, boolean move) {
         String eventType = "mousemove";
         if (down) {
@@ -266,82 +203,111 @@ public class MainActivity extends Activity {
         webView.loadUrl("javascript:" + js);
     }
 
-    private interface JoystickListener {
-        void onMove(float x, float y);
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        if (serverThread != null) {
+            serverThread.stopServer();
+        }
     }
 
-    private static class JoystickView extends View {
-        private final JoystickListener listener;
-        private float knobX = 0f;
-        private float knobY = 0f;
-        private float centerX;
-        private float centerY;
-        private float radius = 72f;
-        private boolean active = false;
+    private static class ServerThread extends Thread {
+        private final AssetManager assets;
+        private ServerSocket serverSocket;
+        private volatile boolean running = true;
 
-        public JoystickView(Activity activity, JoystickListener listener) {
-            super(activity);
-            this.listener = listener;
-            setBackgroundColor(Color.argb(0, 0, 0, 0));
+        ServerThread(AssetManager assets) {
+            this.assets = assets;
         }
 
         @Override
-        protected void onDraw(android.graphics.Canvas canvas) {
-            super.onDraw(canvas);
-            int w = getWidth();
-            int h = getHeight();
-            centerX = w / 2f;
-            centerY = h / 2f;
-            radius = Math.min(w, h) * 0.38f;
-
-            android.graphics.Paint basePaint = new android.graphics.Paint();
-            basePaint.setColor(0xAA333333);
-            basePaint.setStyle(android.graphics.Paint.Style.FILL);
-            canvas.drawCircle(centerX, centerY, radius, basePaint);
-
-            android.graphics.Paint knobPaint = new android.graphics.Paint();
-            knobPaint.setColor(0xFF66A3FF);
-            knobPaint.setStyle(android.graphics.Paint.Style.FILL);
-
-            float knobRadius = radius * 0.42f;
-            float drawX = centerX + knobX * radius;
-            float drawY = centerY + knobY * radius;
-            canvas.drawCircle(drawX, drawY, knobRadius, knobPaint);
-        }
-
-        @Override
-        public boolean onTouchEvent(MotionEvent event) {
-            float dx = event.getX() - getWidth() / 2f;
-            float dy = event.getY() - getHeight() / 2f;
-            float distance = (float) Math.sqrt(dx * dx + dy * dy);
-
-            if (event.getActionMasked() == MotionEvent.ACTION_DOWN) {
-                active = true;
-            } else if (event.getActionMasked() == MotionEvent.ACTION_UP || event.getActionMasked() == MotionEvent.ACTION_CANCEL) {
-                active = false;
-                knobX = 0f;
-                knobY = 0f;
-                if (listener != null) {
-                    listener.onMove(0f, 0f);
+        public void run() {
+            try {
+                serverSocket = new ServerSocket();
+                serverSocket.setReuseAddress(true);
+                serverSocket.bind(new InetSocketAddress("127.0.0.1", 9090));
+                while (running) {
+                    try (Socket socket = serverSocket.accept()) {
+                        handleClient(socket);
+                    }
                 }
-                invalidate();
-                return true;
+            } catch (IOException ignored) {
             }
+        }
 
-            float maxDistance = radius;
-            if (distance > maxDistance) {
-                float scale = maxDistance / distance;
-                dx *= scale;
-                dy *= scale;
-            }
+        private void handleClient(Socket socket) {
+            try {
+                socket.setSoTimeout(5000);
+                InputStream input = socket.getInputStream();
+                byte[] buffer = new byte[4096];
+                int read = input.read(buffer);
+                if (read <= 0) {
+                    return;
+                }
 
-            knobX = dx / maxDistance;
-            knobY = dy / maxDistance;
-            if (listener != null) {
-                listener.onMove(knobX, knobY);
+                String request = new String(buffer, 0, read, StandardCharsets.UTF_8);
+                String path = "/";
+                String[] lines = request.split("\\r?\\n");
+                if (lines.length > 0) {
+                    String firstLine = lines[0];
+                    String[] parts = firstLine.split(" ");
+                    if (parts.length >= 2) {
+                        path = parts[1];
+                    }
+                }
+
+                if ("/".equals(path)) {
+                    path = "/index.html";
+                }
+
+                String assetPath = "www" + path;
+                byte[] data = readAsset(assetPath);
+                String mimeType = guessMimeType(path);
+
+                String response = "HTTP/1.1 200 OK\r\n"
+                        + "Content-Type: " + mimeType + "\r\n"
+                        + "Content-Length: " + data.length + "\r\n"
+                        + "Connection: close\r\n\r\n";
+
+                OutputStream output = socket.getOutputStream();
+                output.write(response.getBytes(StandardCharsets.UTF_8));
+                output.write(data);
+                output.flush();
+            } catch (IOException ignored) {
             }
-            invalidate();
-            return true;
+        }
+
+        private byte[] readAsset(String assetPath) throws IOException {
+            try (InputStream input = assets.open(assetPath)) {
+                ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+                byte[] chunk = new byte[4096];
+                int read;
+                while ((read = input.read(chunk)) != -1) {
+                    buffer.write(chunk, 0, read);
+                }
+                return buffer.toByteArray();
+            }
+        }
+
+        private String guessMimeType(String path) {
+            if (path.endsWith(".html")) return "text/html; charset=utf-8";
+            if (path.endsWith(".js")) return "application/javascript; charset=utf-8";
+            if (path.endsWith(".css")) return "text/css; charset=utf-8";
+            if (path.endsWith(".json")) return "application/json; charset=utf-8";
+            if (path.endsWith(".png")) return "image/png";
+            if (path.endsWith(".jpg") || path.endsWith(".jpeg")) return "image/jpeg";
+            if (path.endsWith(".webp")) return "image/webp";
+            return "application/octet-stream";
+        }
+
+        public void stopServer() {
+            running = false;
+            try {
+                if (serverSocket != null && !serverSocket.isClosed()) {
+                    serverSocket.close();
+                }
+            } catch (IOException ignored) {
+            }
         }
     }
 }
