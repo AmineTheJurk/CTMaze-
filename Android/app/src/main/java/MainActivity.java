@@ -1,7 +1,6 @@
 package com.aminethejurk.cornthiefmaze;
 
 import android.app.Activity;
-import android.content.res.AssetManager;
 import android.graphics.Color;
 import android.os.Bundle;
 import android.os.Handler;
@@ -19,19 +18,18 @@ import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.RelativeLayout;
 
-import java.io.ByteArrayOutputStream;
+import com.chaquo.python.Python;
+import com.chaquo.python.android.AndroidPlatform;
+
+import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.net.InetSocketAddress;
-import java.net.ServerSocket;
-import java.net.Socket;
-import java.nio.charset.StandardCharsets;
 
 public class MainActivity extends Activity {
     private WebView webView;
     private View controlsContainer;
-    private ServerThread serverThread;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
 
     @Override
@@ -91,13 +89,66 @@ public class MainActivity extends Activity {
 
         setContentView(rootLayout);
 
-        startLocalGameServer();
+        copyAssetsToFilesDir("www");
+        copyAssetsToFilesDir("python");
+        startPythonServer();
         webView.loadUrl("http://localhost:9090/index.html");
     }
 
-    private void startLocalGameServer() {
-        serverThread = new ServerThread(getAssets());
-        serverThread.start();
+    private void copyAssetsToFilesDir(String relativePath) {
+        File targetDir = new File(getFilesDir(), relativePath);
+        if (targetDir.exists()) {
+            return;
+        }
+
+        try {
+            String[] entries = getAssets().list(relativePath);
+            if (entries == null || entries.length == 0) {
+                return;
+            }
+
+            targetDir.mkdirs();
+            for (String entry : entries) {
+                String src = relativePath + "/" + entry;
+                String[] nested = getAssets().list(src);
+                if (nested != null && nested.length > 0) {
+                    copyAssetsToFilesDir(src);
+                } else {
+                    InputStream in = getAssets().open(src);
+                    File outFile = new File(getFilesDir(), src);
+                    File parent = outFile.getParentFile();
+                    if (parent != null) {
+                        parent.mkdirs();
+                    }
+
+                    OutputStream out = new FileOutputStream(outFile);
+                    byte[] buffer = new byte[4096];
+                    int read;
+                    while ((read = in.read(buffer)) != -1) {
+                        out.write(buffer, 0, read);
+                    }
+                    in.close();
+                    out.close();
+                }
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void startPythonServer() {
+        File gameDir = new File(getFilesDir(), "www");
+        File scriptPath = new File(getFilesDir(), "python/serve_local.py");
+
+        if (!Python.isStarted()) {
+            Python.start(new AndroidPlatform(this));
+        }
+
+        Python python = Python.getInstance();
+        python.getModule("os").callAttr(
+                "system",
+                "python " + scriptPath.getAbsolutePath() + " " + gameDir.getAbsolutePath() + " 9090 >/dev/null 2>&1 &"
+        );
     }
 
     private View buildControlsOverlay() {
@@ -201,114 +252,5 @@ public class MainActivity extends Activity {
                 + "bubbles: true, cancelable: true, clientX: " + Math.round(x) + ", clientY: " + Math.round(y) + ", button: 0});"
                 + "document.dispatchEvent(evt);" + "}catch(err){}})();";
         webView.loadUrl("javascript:" + js);
-    }
-
-    @Override
-    protected void onDestroy() {
-        super.onDestroy();
-        if (serverThread != null) {
-            serverThread.stopServer();
-        }
-    }
-
-    private static class ServerThread extends Thread {
-        private final AssetManager assets;
-        private ServerSocket serverSocket;
-        private volatile boolean running = true;
-
-        ServerThread(AssetManager assets) {
-            this.assets = assets;
-        }
-
-        @Override
-        public void run() {
-            try {
-                serverSocket = new ServerSocket();
-                serverSocket.setReuseAddress(true);
-                serverSocket.bind(new InetSocketAddress("127.0.0.1", 9090));
-                while (running) {
-                    try (Socket socket = serverSocket.accept()) {
-                        handleClient(socket);
-                    }
-                }
-            } catch (IOException ignored) {
-            }
-        }
-
-        private void handleClient(Socket socket) {
-            try {
-                socket.setSoTimeout(5000);
-                InputStream input = socket.getInputStream();
-                byte[] buffer = new byte[4096];
-                int read = input.read(buffer);
-                if (read <= 0) {
-                    return;
-                }
-
-                String request = new String(buffer, 0, read, StandardCharsets.UTF_8);
-                String path = "/";
-                String[] lines = request.split("\\r?\\n");
-                if (lines.length > 0) {
-                    String firstLine = lines[0];
-                    String[] parts = firstLine.split(" ");
-                    if (parts.length >= 2) {
-                        path = parts[1];
-                    }
-                }
-
-                String cleanPath = path.split("\\?")[0].split("#")[0];
-                if ("/".equals(cleanPath)) {
-                    cleanPath = "/index.html";
-                }
-
-                String assetPath = "www" + cleanPath;
-                byte[] data = readAsset(assetPath);
-                String mimeType = guessMimeType(cleanPath);
-
-                String response = "HTTP/1.1 200 OK\r\n"
-                        + "Content-Type: " + mimeType + "\r\n"
-                        + "Content-Length: " + data.length + "\r\n"
-                        + "Connection: close\r\n\r\n";
-
-                OutputStream output = socket.getOutputStream();
-                output.write(response.getBytes(StandardCharsets.UTF_8));
-                output.write(data);
-                output.flush();
-            } catch (IOException ignored) {
-            }
-        }
-
-        private byte[] readAsset(String assetPath) throws IOException {
-            try (InputStream input = assets.open(assetPath)) {
-                ByteArrayOutputStream buffer = new ByteArrayOutputStream();
-                byte[] chunk = new byte[4096];
-                int read;
-                while ((read = input.read(chunk)) != -1) {
-                    buffer.write(chunk, 0, read);
-                }
-                return buffer.toByteArray();
-            }
-        }
-
-        private String guessMimeType(String path) {
-            if (path.endsWith(".html")) return "text/html; charset=utf-8";
-            if (path.endsWith(".js")) return "application/javascript; charset=utf-8";
-            if (path.endsWith(".css")) return "text/css; charset=utf-8";
-            if (path.endsWith(".json")) return "application/json; charset=utf-8";
-            if (path.endsWith(".png")) return "image/png";
-            if (path.endsWith(".jpg") || path.endsWith(".jpeg")) return "image/jpeg";
-            if (path.endsWith(".webp")) return "image/webp";
-            return "application/octet-stream";
-        }
-
-        public void stopServer() {
-            running = false;
-            try {
-                if (serverSocket != null && !serverSocket.isClosed()) {
-                    serverSocket.close();
-                }
-            } catch (IOException ignored) {
-            }
-        }
     }
 }
