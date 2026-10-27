@@ -1,3 +1,5 @@
+package com.aminethejurk.cornthiefmaze;
+
 import android.app.Activity;
 import android.graphics.Color;
 import android.os.Bundle;
