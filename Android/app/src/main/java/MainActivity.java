@@ -256,13 +256,14 @@ public class MainActivity extends Activity {
                     }
                 }
 
-                if ("/".equals(path)) {
-                    path = "/index.html";
+                String cleanPath = path.split("\\?")[0].split("#")[0];
+                if ("/".equals(cleanPath)) {
+                    cleanPath = "/index.html";
                 }
 
-                String assetPath = "www" + path;
+                String assetPath = "www" + cleanPath;
                 byte[] data = readAsset(assetPath);
-                String mimeType = guessMimeType(path);
+                String mimeType = guessMimeType(cleanPath);
 
                 String response = "HTTP/1.1 200 OK\r\n"
                         + "Content-Type: " + mimeType + "\r\n"
