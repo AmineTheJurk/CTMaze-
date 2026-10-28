@@ -287,7 +287,13 @@ function handleMessage(ws, msg) {
       const room = rooms.get(client.roomCode);
       if (!room) return;
       const target = room.players.find(p => p.id === msg.targetId);
-      const targetName = target ? target.name : 'A Thief';
+
+      // Only allow catching thieves, not other monsters
+      if (!target || target.role !== 'thief') {
+        return send(ws, { type: 'error', message: 'Can only catch thieves!' });
+      }
+
+      const targetName = target.name;
 
       broadcastToRoom(client.roomCode, {
         type: 'player_caught',
@@ -372,17 +378,16 @@ function handleWsConnection(ws, req) {
   });
 }
 
-// --- HTTP Server (Standalone WebSocket Server & Health Checks) ---
+// --- HTTP Server (Static Game Files & Health Check) ---
 const server = http.createServer((req, res) => {
   const reqUrl = req.url.split('?')[0];
 
-  // Render health checks
+  // Health checks
   if (reqUrl === '/healthz' || reqUrl === '/health') {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
     return res.end('OK');
   }
 
-  // Status API
   if (reqUrl === '/api/stats') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     return res.end(JSON.stringify({
@@ -393,55 +398,7 @@ const server = http.createServer((req, res) => {
     }));
   }
 
-  // Standalone status dashboard for Render.com (when game files are not present or at /status)
-  const indexPath = path.join(__dirname, 'index.html');
-  const hasGameFiles = fs.existsSync(indexPath);
-
-  if (reqUrl === '/status' || reqUrl === '/info' || (!hasGameFiles && (reqUrl === '/' || reqUrl === ''))) {
-    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-    return res.end(`<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <title>Corn Thief Maze - Multiplayer Server</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0d0c09; color: #efe6c8; margin: 0; padding: 24px; text-align: center; }
-    .card { max-width: 580px; margin: 40px auto; background: #1a1710; border: 2px solid #4a3f22; border-radius: 8px; padding: 28px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); text-align: left; }
-    h1 { color: #f2c230; margin-top: 0; font-size: 28px; }
-    .badge { display: inline-block; background: #27ae60; color: #fff; padding: 4px 10px; border-radius: 4px; font-weight: bold; font-size: 13px; margin-bottom: 16px; }
-    .stat { display: flex; justify-content: space-between; border-bottom: 1px solid #332b18; padding: 10px 0; font-size: 16px; }
-    .stat b { color: #f2c230; }
-    code { background: #000; color: #7fd3ff; padding: 6px 10px; border-radius: 4px; font-size: 15px; display: inline-block; word-break: break-all; }
-    .url-box { margin-top: 20px; background: #080705; border: 1px solid #4a3f22; padding: 14px; border-radius: 4px; }
-    .note { margin-top: 14px; color: #a79a74; font-size: 14px; line-height: 1.4; }
-  </style>
-</head>
-<body>
-  <div class="card">
-    <div class="badge">● MULTIPLAYER SERVER ONLINE</div>
-    <h1>🌽 Corn Thief Maze Server</h1>
-    <p>Dedicated WebSocket multiplayer lobby and synchronization backend on Render.com.</p>
-    
-    <div class="stat"><span>Active Game Rooms:</span> <b>${rooms.size}</b></div>
-    <div class="stat"><span>Connected Players:</span> <b>${clients.size}</b></div>
-    <div class="stat"><span>Server Uptime:</span> <b>${Math.floor(process.uptime())}s</b></div>
-
-    <div class="url-box">
-      <div style="font-size:13px; color:#a79a74; margin-bottom:6px; font-weight: bold;">Multiplayer WebSocket Endpoint:</div>
-      <code>wss://${req.headers.host || 'corn-thief-multiplayer.onrender.com'}</code>
-    </div>
-
-    <div class="note">
-      🎮 <b>Game Client:</b> Hosted separately on itch.io (HTML5) &amp; Android/Windows APK.<br>
-      Only this WebSocket server runs on Render.com.
-    </div>
-  </div>
-</body>
-</html>`);
-  }
-
-  // File resolution (if game files are present, e.g. local preview)
+  // File resolution
   let safePath = path.normalize(decodeURIComponent(reqUrl));
   if (safePath === '/' || safePath === '') {
     safePath = '/index.html';
