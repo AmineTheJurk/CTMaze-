@@ -2,11 +2,10 @@
 requires = ["briefcase"]
 
 [tool.briefcase]
-project_name = "Corn Thief Maze"
+project_name = "corn-thief-maze"
 bundle = "com.cornthief"
 version = "1.0.0"
 url = "https://example.com/cornthief"
-license.file = "LICENSE"
 author = "Your Name"
 author_email = "you@example.com"
 formal_name = "Corn Thief Maze"
