@@ -1,0 +1,268 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Corn Thief Maze</title>
+<meta name="description" content="An immersive 3D cornfield horror & stealth maze game where you outsmart monsters, sneak through vents, collect corn, and escape.">
+<meta property="og:title" content="Corn Thief Maze">
+<meta property="og:description" content="An immersive 3D cornfield horror & stealth maze game where you outsmart monsters, sneak through vents, collect corn, and escape.">
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Alfa+Slab+One&family=Barlow+Condensed:wght@500;700&display=swap">
+<style>
+/* Layout: full-bleed 3D view; HUD pinned to edges (stamina + 5 slots bottom, corns top-left, map top-right); menus are centered panels. */
+:root {
+  --soil: #0d0c09; --panel: #1a1710; --line: #4a3f22; --corn: #f2c230; --husk: #7fb04a;
+  --paper: #efe6c8; --muted: #a79a74; --alert: #e0432f; --cool: #7fd3ff;
+  --display: 'Alfa Slab One', Georgia, serif; --body: 'Barlow Condensed', 'Arial Narrow', Arial, sans-serif;
+  color-scheme: dark;
+}
+html, body { height: 100%; }
+body { margin: 0; background: var(--soil); color: var(--paper); font-family: var(--body); font-size: 18px; overflow: hidden; user-select: none; }
+#view { position: fixed; inset: 0; width: 100%; height: 100%; display: block; background: var(--soil); }
+.fx { position: fixed; inset: 0; pointer-events: none; opacity: 0; }
+#dark { background: radial-gradient(circle at 50% 50%, rgba(0,0,0,0) 4%, rgba(0,0,0,.985) 34%); transition: opacity .2s; }
+#hurt { background: radial-gradient(circle, rgba(120,0,0,.15) 20%, rgba(150,0,0,.85) 100%); transition: opacity .4s; }
+#gaze { background: radial-gradient(circle, rgba(0,0,0,0) 45%, rgba(220,30,30,.8) 100%); }
+#cuffs { background: radial-gradient(circle, rgba(0,0,0,0) 55%, rgba(60,90,200,.55) 100%); transition: opacity .3s; }
+#water { background: rgba(42, 106, 154, 0.3); transition: opacity .2s; }
+#grab { position: fixed; bottom: calc(140px + env(safe-area-inset-bottom, 0px)); left: 50%; transform: translateX(-50%); width: min(360px, calc(100% - 32px)); background: rgba(26, 23, 16, 0.95); border: 3px solid var(--alert); padding: 16px; text-align: center; pointer-events: none; z-index: 7; }
+#grab[hidden] { display: none; }
+#grab h3 { margin: 0 0 12px; color: var(--paper); font-size: 20px; font-weight: 700; }
+#gBar { display: block; width: 100%; height: 24px; background: rgba(0,0,0,.4); border: 2px solid var(--alert); box-sizing: border-box; }
+#gBar { background: var(--alert); }
+#flash { z-index: 5; }
+#hud { position: fixed; inset: 0; pointer-events: none; padding: env(safe-area-inset-top, 0px) max(16px, env(safe-area-inset-left, 0px)) env(safe-area-inset-bottom, 0px) max(16px, env(safe-area-inset-right, 0px)); }
+#hud[hidden] { display: none; }
+.cornbox { position: absolute; top: calc(16px + env(safe-area-inset-top, 0px)); left: max(16px, env(safe-area-inset-left, 0px)); display: flex; align-items: center; gap: 10px; background: rgba(13,12,9,.72); border: 2px solid var(--line); padding: 6px 14px 6px 8px; }
+.cornbox img { width: 34px; height: 34px; }
+#corns { font-family: var(--display); font-size: 26px; color: var(--corn); font-variant-numeric: tabular-nums; }
+#status { position: absolute; top: calc(76px + env(safe-area-inset-top, 0px)); left: max(16px, env(safe-area-inset-left, 0px)); display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+#status b { background: rgba(13,12,9,.8); border-left: 5px solid var(--alert); padding: 3px 10px; font-size: 18px; letter-spacing: .08em; font-weight: 700; }
+#mapwrap { position: absolute; top: calc(16px + env(safe-area-inset-top, 0px)); right: max(16px, env(safe-area-inset-right, 0px)); width: 170px; height: 170px; border: 2px solid var(--line); background: #000; }
+#mapwrap.off { display: none; }
+#mmap { width: 100%; height: 100%; image-rendering: pixelated; display: block; }
+#mdot { position: absolute; left: 0; top: 0; width: 8px; height: 8px; border-radius: 50%; background: var(--cool); box-shadow: 0 0 0 2px #000; }
+#mapwrap small { position: absolute; bottom: -22px; right: 0; color: var(--muted); font-size: 14px; }
+#ventBtn { position: absolute; bottom: calc(125px + env(safe-area-inset-bottom, 0px)); left: 50%; transform: translateX(-50%); background: rgba(26,23,16,.95); border: 3px solid var(--corn); color: var(--corn); font-family: var(--display); font-size: 20px; padding: 8px 22px; cursor: pointer; pointer-events: auto; z-index: 8; box-shadow: 0 4px 12px rgba(0,0,0,.6); transition: all .2s; }
+#ventBtn.ready { background: var(--corn); color: #1b1503; box-shadow: 0 0 16px rgba(242,194,48,.6); }
+#ventBtn[hidden] { display: none; }
+#mExitDot { position: absolute; left: 0; top: 0; width: 10px; height: 10px; background: #00ff88; border: 1.5px solid #000; box-shadow: 0 0 6px #00ff88, 0 0 12px rgba(0, 255, 136, 0.8); transform: translate(-50%, -50%) rotate(45deg); z-index: 6; pointer-events: none; }
+#mExitDot .exit-tag { position: absolute; left: -32px; top: -4px; font-size: 10px; font-weight: 700; letter-spacing: .08em; color: #00ff88; background: rgba(0, 0, 0, 0.85); padding: 1px 3px; border-radius: 2px; border: 1px solid #00ff88; transform: rotate(-45deg); pointer-events: none; }
+#mExitDot.open { background: #ffd700; border-color: #fff; box-shadow: 0 0 10px #ffd700, 0 0 20px #00ff88; animation: exitPulse 0.7s infinite alternate; }
+#mExitDot.open .exit-tag { color: #ffd700; border-color: #ffd700; box-shadow: 0 0 8px rgba(255, 215, 0, 0.8); }
+@keyframes exitPulse { 0% { transform: translate(-50%, -50%) rotate(45deg) scale(1); filter: brightness(1); } 100% { transform: translate(-50%, -50%) rotate(45deg) scale(1.6); filter: brightness(1.4); } }
+#monsterActionBar { position: absolute; left: 50%; transform: translateX(-50%); bottom: calc(75px + env(safe-area-inset-bottom, 0px)); display: flex; flex-direction: column; align-items: center; gap: 6px; z-index: 8; pointer-events: auto; }
+#monsterActionBar[hidden] { display: none !important; }
+.monster-bar-header { display: flex; align-items: center; justify-content: center; }
+.monster-role-badge { font-family: var(--display); font-size: 13px; letter-spacing: .12em; padding: 2px 10px; border-radius: 3px; background: rgba(13, 12, 9, 0.85); border: 1px solid var(--alert); color: var(--corn); text-transform: uppercase; }
+.monster-buttons-row { display: flex; gap: 12px; align-items: center; }
+.m-btn { position: relative; min-width: 170px; height: 64px; background: rgba(20, 17, 12, 0.92); border: 3px solid var(--line); color: var(--paper); display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 4px 14px; cursor: pointer; transition: all 0.15s ease; box-shadow: 0 4px 10px rgba(0, 0, 0, 0.6); user-select: none; }
+.m-btn:hover { border-color: var(--corn); transform: translateY(-2px); }
+.m-btn:active { transform: translateY(1px); }
+.m-btn-key { position: absolute; top: 4px; left: 6px; font-size: 11px; font-weight: 700; color: var(--muted); background: rgba(0,0,0,0.5); padding: 1px 5px; border-radius: 2px; border: 1px solid rgba(255,255,255,0.15); }
+.m-btn-main { display: flex; align-items: center; gap: 8px; margin-top: 2px; }
+.m-btn-icon { font-size: 20px; }
+.m-btn-text { font-family: var(--display); font-size: 19px; line-height: 1; letter-spacing: 0.04em; }
+.m-btn-sub { font-size: 12px; color: var(--muted); letter-spacing: 0.08em; margin-top: 2px; font-weight: 700; }
+.m-btn-cooldown { font-size: 13px; font-weight: 700; color: var(--husk); letter-spacing: 0.06em; margin-top: 2px; }
+.m-btn-strike.in-range { border-color: #ff2222; background: rgba(180, 20, 20, 0.95); color: #fff; box-shadow: 0 0 20px rgba(255, 34, 34, 0.8), 0 0 35px rgba(255, 0, 0, 0.4); animation: catchPulse 0.5s infinite alternate; }
+.m-btn-strike.in-range .m-btn-sub { color: #ffeedd; }
+.m-btn-strike.in-range .m-btn-key { background: #ff2222; color: #fff; border-color: #fff; }
+.m-btn.on-cd { opacity: 0.65; cursor: not-allowed; border-color: #443c2e; }
+.m-btn.on-cd .m-btn-cooldown { color: var(--alert); }
+@media (max-width: 700px) { .m-btn { min-width: 130px; height: 56px; padding: 3px 8px; } .m-btn-text { font-size: 15px; } }
+#toast { position: absolute; top: calc(24px + env(safe-area-inset-top, 0px)); left: 50%; transform: translate(-50%, -12px); max-width: min(560px, calc(100% - 420px)); text-align: center; background: rgba(13,12,9,.85); border: 2px solid var(--corn); padding: 8px 16px; font-size: 20px; font-weight: 700; opacity: 0; transition: opacity .25s, transform .25s; }
+#toast.on { opacity: 1; transform: translate(-50%, 0); }
+.bottom { position: absolute; left: 50%; transform: translateX(-50%); bottom: calc(14px + env(safe-area-inset-bottom, 0px)); display: flex; flex-direction: column; align-items: center; gap: 10px; width: min(560px, calc(100% - 32px)); }
+.stambox { width: 100%; height: 16px; background: rgba(13,12,9,.8); border: 2px solid var(--line); position: relative; }
+.stambox::after { content: 'STAMINA'; position: absolute; left: 8px; top: -1px; font-size: 12px; letter-spacing: .14em; font-weight: 700; color: #000; mix-blend-mode: normal; line-height: 16px; }
+#stam { height: 100%; background: var(--husk); transition: background .2s; }
+#stam.low { background: var(--alert); }
+#stam.boost { background: var(--corn); }
+#inv { display: flex; gap: 8px; pointer-events: auto; }
+.slot { position: relative; width: 84px; height: 92px; background: rgba(26,23,16,.88); border: 2px solid var(--line); display: flex; flex-direction: column; align-items: center; justify-content: flex-start; padding-top: 6px; box-sizing: border-box; cursor: pointer; }
+.slot img { width: 54px; height: 54px; }
+.slot .n { position: absolute; top: 2px; left: 6px; font-size: 14px; color: var(--muted); font-weight: 700; }
+.slot .nm { font-size: 13px; line-height: 1.05; text-align: center; color: var(--paper); margin-top: 2px; padding: 0 2px; }
+.slot.sel { border-color: var(--corn); background: rgba(60,50,12,.9); }
+.slot.locked { filter: grayscale(1) brightness(.55); }
+#cross { position: absolute; left: 50%; top: 50%; width: 6px; height: 6px; margin: -3px 0 0 -3px; border-radius: 50%; background: rgba(255,255,255,.55); }
+.screen { position: fixed; inset: 0; z-index: 10; display: flex; align-items: center; justify-content: center; background: rgba(8,7,5,.9); padding-block: 16px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); overflow-y: auto; }
+.screen[hidden] { display: none; }
+.card { width: min(760px, 100%); background: var(--panel); border: 3px solid var(--line); padding: 24px 28px; display: grid; gap: 16px; margin: auto; }
+h1 { font-family: var(--display); font-weight: 400; font-size: clamp(32px, 6vw, 52px); margin: 0; color: var(--corn); line-height: 1; text-wrap: balance; }
+h2 { margin: 0 0 6px; font-size: 16px; letter-spacing: .16em; text-transform: uppercase; color: var(--muted); }
+.lead { margin: 0; font-size: 22px; line-height: 1.25; max-width: 62ch; }
+.cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 20px; }
+.cols > div { min-width: 0; }
+ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 4px; font-size: 19px; }
+li b { color: var(--corn); font-weight: 700; display: inline-block; min-width: 112px; margin-right: 8px; }
+.rules li { color: var(--paper); }
+.rules li::before { content: '\2716'; color: var(--alert); margin-right: 10px; }
+#intro { justify-content: flex-start; padding: 0; background: #0b0a07; overflow: hidden; }
+#menuBg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.menuwrap { position: relative; z-index: 1; display: grid; gap: 18px; width: min(520px, 100%); padding-block: 16px; padding-left: max(5vw, 16px, env(safe-area-inset-left, 0px)); padding-right: 16px; justify-items: start; }
+.mega { font-size: clamp(46px, 9vw, 108px); line-height: .95; text-shadow: 5px 5px 0 #000; }
+.tag { margin: 0; font-size: 24px; color: var(--paper); text-shadow: 2px 2px 0 #000; }
+.btns { display: grid; gap: 12px; width: min(280px, 100%); margin-top: 8px; }
+.btns button { justify-self: stretch; text-align: center; font-size: 28px; }
+.btnrow { display: flex; gap: 12px; flex-wrap: wrap; }
+button.alt { background: transparent; color: var(--paper); border: 3px solid var(--line); }
+button.alt:hover { background: rgba(255,255,255,.08); border-color: var(--corn); }
+.menuwrap .note { text-shadow: 1px 1px 0 #000; }
+@media (max-width: 700px) { #intro { align-items: flex-start; } .menuwrap { padding-top: 6vh; } }
+#staticc { width: 100%; height: 100%; image-rendering: pixelated; z-index: 4; mix-blend-mode: screen; }
+#mhint { display: none; position: absolute; left: 0; top: 0; width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--corn); background: rgba(242,194,48,.4); animation: ping 1s infinite; }
+@keyframes ping { 50% { opacity: .3; } }
+ul.cast { grid-template-columns: 1fr; }
+ul.cast li b { min-width: 140px; }
+#event { position: fixed; z-index: 6; top: 0; right: max(16px, env(safe-area-inset-right, 0px)); width: min(440px, calc(100% - 32px)); display: flex; gap: 14px; align-items: flex-start; background: #14110b; border: 4px solid var(--corn); border-top: 0; padding: 14px 16px 16px 14px; transform: translateY(-120%); pointer-events: none; box-shadow: 0 8px 0 rgba(0,0,0,.4); padding-top: calc(14px + env(safe-area-inset-top, 0px)); }
+#event.on { animation: drop 10s both; }
+@keyframes drop { 0% { transform: translateY(-120%); } 5% { transform: translateY(4%); } 8% { transform: translateY(-2%); } 11%, 92% { transform: translateY(0); } 100% { transform: translateY(-120%); } }
+#evFace { width: 76px; height: 76px; flex: none; border: 3px solid var(--line); image-rendering: auto; background: #1a1710; }
+.evbody { min-width: 0; }
+.evk { font-size: 13px; letter-spacing: .2em; color: var(--alert); font-weight: 700; }
+#evTitle { font-family: var(--display); font-size: 28px; color: var(--corn); line-height: 1.05; margin: 2px 0 6px; }
+#evText { margin: 0; font-size: 18px; line-height: 1.2; }
+button { font-family: var(--display); font-size: 24px; background: var(--corn); color: #1b1503; border: 0; padding: 12px 24px; cursor: pointer; justify-self: start; }
+button:hover { background: #ffd95a; }
+button:focus-visible { outline: 3px solid var(--cool); outline-offset: 3px; }
+button:disabled { opacity: .6; cursor: wait; }
+.note { margin: 0; color: var(--muted); font-size: 16px; }
+#pause { cursor: pointer; flex-direction: column; gap: 8px; text-align: center; }
+#pause h1 { font-size: 40px; }
+/* Multiplayer UI */
+.help-q-btn { width: 44px; height: 44px; border-radius: 50%; background: rgba(242, 194, 48, 0.2); border: 2px solid var(--corn); color: var(--corn); font-family: var(--display); font-size: 24px; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; transition: all .2s; flex: none; padding: 0; }
+.help-q-btn:hover { background: var(--corn); color: #1b1503; transform: scale(1.08); }
+.help-tip-box { margin-top: 10px; background: rgba(13, 12, 9, 0.95); border-left: 4px solid var(--corn); padding: 10px 14px; font-size: 16px; line-height: 1.4; color: var(--paper); }
+.mode-opt-card { background: rgba(26, 23, 16, 0.6); border: 2px solid var(--line); padding: 14px; margin-bottom: 12px; }
+.teamcode-display-wrap { background: rgba(13, 12, 9, 0.85); border: 2px dashed var(--corn); padding: 14px; text-align: center; border-radius: 4px; }
+.teamcode-badge { font-family: var(--display); font-size: 38px; color: var(--corn); letter-spacing: 5px; background: #000; padding: 4px 18px; border: 2px solid var(--corn); display: inline-block; }
+.players-list-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; margin-top: 8px; }
+.p-card { background: rgba(26, 23, 16, 0.8); border: 2px solid var(--line); padding: 10px 14px; }
+.p-card.is-me { border-color: var(--corn); background: rgba(50, 42, 14, 0.85); }
+.p-card-top { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+.p-badge { width: 14px; height: 14px; border-radius: 50%; }
+.p-name { font-weight: 700; font-size: 18px; }
+.tag-host { background: var(--corn); color: #000; font-size: 11px; padding: 1px 5px; border-radius: 3px; font-weight: 700; margin-left: 4px; }
+.tag-you { color: var(--cool); font-size: 12px; font-weight: 700; margin-left: 4px; }
+.p-role-label { font-size: 14px; color: var(--muted); }
+.role-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 8px; margin-top: 6px; }
+.role-btn { background: rgba(13, 12, 9, 0.7); border: 2px solid var(--line); padding: 8px; cursor: pointer; text-align: left; display: flex; flex-direction: column; gap: 2px; }
+.role-btn b { font-size: 16px; }
+.role-btn small { font-size: 12px; color: var(--muted); line-height: 1.1; }
+.role-btn.active { border-color: var(--corn); background: rgba(60, 50, 15, 0.9); }
+.role-btn:hover { border-color: var(--cool); }
+@media (max-width: 700px) { #toast { max-width: calc(100% - 32px); top: calc(200px + env(safe-area-inset-top, 0px)); } #mapwrap { width: 120px; height: 120px; } .slot { width: 60px; height: 76px; } .slot img { width: 40px; height: 40px; } .slot .nm { font-size: 11px; } .card { padding: 18px; } }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<canvas id="view"></canvas>
+<div class="fx" id="dark"></div><div class="fx" id="hurt"></div><div class="fx" id="gaze"></div><div class="fx" id="cuffs"></div><div class="fx" id="water"></div><div class="fx" id="flash"></div><canvas class="fx" id="staticc"></canvas>
+<div id="grab" hidden><h3>Grabber!</h3><p style="margin:0 0 8px;color:var(--paper)">Mash P to break free!</p><div id="gBar" style="width:0"></div></div>
+
+<div id="event"><canvas id="evFace" width="96" height="96"></canvas><div class="evbody"><div class="evk">MAZERNAZER LIVE</div><div id="evTitle"></div><p id="evText"></p></div></div>
+
+<div id="hud" hidden>
+  <div class="cornbox"><img id="cornIcon" alt="Corns"><span id="corns">0 / 10</span></div>
+  <div id="status"></div>
+  <div id="toast"></div>
+  <div id="mapwrap"><canvas id="mmap" width="65" height="65"></canvas><div id="mdot"></div><div id="mExitDot" title="Escape Exit"><span class="exit-tag">EXIT</span></div><div id="mhint"></div><div id="mpMapDots"></div><small id="mapLabel">M: hide map</small><span id="mnazer"></span></div>
+  <div id="cross"></div>
+  <button id="ventBtn" hidden></button>
+
+  <div class="bottom">
+    <div class="stambox"><div id="stam" style="width:100%"></div></div>
+    <div id="inv"></div>
+  </div>
+</div>
+
+<div class="screen" id="intro">
+  <canvas id="menuBg"></canvas>
+  <div class="menuwrap">
+    <h1 class="mega">Corn Thief<br>Maze</h1>
+    <p class="tag">10 corns. One exit. Everyone is after you.</p>
+    <div class="btns"><button id="start">Start</button><button id="aboutBtn" class="alt">About</button></div>
+    <p class="note">Turn your sound on. Click the game to lock the mouse.</p>
+  </div>
+</div>
+
+<div class="screen" id="about" hidden>
+  <div class="card">
+    <h1>About</h1>
+    <p class="lead">You stole MazerNazer's 10 corns and hid in a huge maze. Collect every corn, stay out of trouble, then find the exit on the east edge.</p>
+    <div class="cols">
+      <div><h2>Controls</h2>
+        <ul><li><b>W A S D</b>move (or crawl in vents)</li><li><b>Mouse</b>look (drag if the cursor is not locked)</li><li><b>Shift</b>run (uses stamina)</li><li><b>V</b>enter / crawl / exit vents</li><li><b>1 - 5</b>pick a slot</li><li><b>E / Click</b>use item</li><li><b>M</b>toggle map</li><li><b>K</b>dive (when flooded)</li><li><b>P</b>mash to escape Grabber</li></ul></div>
+      <div><h2>Maze rules (read the posters)</h2>
+        <ul class="rules"><li>No running</li><li>No drinking Coke</li><li>No grappling hook</li><li>No teleporting</li><li>No eating protein bars</li><li>No smoking</li></ul>
+        <p class="note">If the Police sees you break one, he doubles his speed and comes for you.</p></div>
+    </div>
+    <div class="cols">
+      <div><h2>Items</h2>
+        <ul><li><b>Grapple</b>pulls you far forward</li><li><b>Teleporter</b>jump somewhere random</li><li><b>Coke</b>blasts people back</li><li><b>Protein Bar</b>refills stamina</li>
+        <li><b>Glow Stick</b>see further, even in the dark</li><li><b>Smoke Bomb</b>everyone nearby loses you</li><li><b>Banana Peel</b>trips whoever steps on it</li><li><b>Alarm Clock</b>lures MazerNazer and HurterBoy</li><li><b>Spring Shoes</b>run faster for a while</li><li><b>Medkit</b>stand up after a stab</li><li><b>Corn Radar</b>marks the nearest corn</li></ul></div>
+      <div><h2>Watch out</h2>
+        <ul><li><b>Police</b>handcuffs you for 30s</li><li><b>MazerNazer</b>if he catches you, game over</li><li><b>HurterBoy</b>stabs you, then you wait for the Hospital Lady</li><li><b>Puppet</b>do not stare at it</li><li><b>Flood event</b>Tunamies ram you down, Grabbers drag you under. Press K to dive and hide.</li></ul></div>
+    </div>
+    <div class="cols"><div><h2>The cast (10 extra characters)</h2>
+      <ul class="cast">
+        <li><b>Mothball</b>Janitor. Leaves puddles that make you slip.</li>
+        <li><b>Static Sam</b>TV head. His signal scrambles your screen and map.</li>
+        <li><b>Lantern Lil</b>Friendly. Touch her for a free item.</li>
+        <li><b>Dr. Snip</b>Barber. Only moves when you are not looking. Snips your stamina.</li>
+        <li><b>Granny Gust</b>Her fan blows you backwards.</li>
+        <li><b>Pidge</b>Pigeon. Steals an item. Coke makes him drop it.</li>
+        <li><b>Bellhop Bongo</b>Rings the alarm when you run near him.</li>
+        <li><b>Mimi</b>Some items on the floor bite.</li>
+        <li><b>Professor Quill</b>Pop quiz. Answer 1, 2 or 3. Right shows a corn, wrong slows you.</li>
+        <li><b>Dozy Duke</b>Sleepwalker. Do not wake him.</li>
+      </ul></div></div>
+    <div class="cols"><div><h2>More cast</h2>
+      <ul class="cast">
+        <li><b>The Flicker</b>Shows up only when the lights flicker.</li>
+        <li><b>Scarecrows</b>Three of them guard corn rooms.</li>
+        <li><b>The Lagger</b>Follows your exact steps, six seconds behind.</li>
+        <li><b>Gum Gertie</b>Her gum slows you down.</li>
+        <li><b>Chef Pepper</b>Throws peppers that burn your stamina.</li>
+        <li><b>Camera Cathy</b>Red light means she tells the Police.</li>
+        <li><b>Hugo</b>His hug pins you for 3 seconds.</li>
+      </ul></div>
+      <div><h2>Events</h2>
+        <p class="note" style="font-size:19px;color:var(--paper)">Every minute or so MazerNazer drops a screen from the top corner and announces an event: box mania, blackouts, corn rain, zoomies, police raids, maze shuffles, naps, flicker nights, dizzy spells and more. Expect the unexpected.</p>
+        <p class="note">Each colored room in the maze holds one corn.</p></div></div>
+    <button id="aboutBack">Back</button>
+  </div>
+</div>
+
+<div class="screen" id="quiz" hidden style="background:rgba(8,7,5,.55)">
+  <div class="card"><h2>Pop quiz from Professor Quill</h2><p class="lead" id="qText" style="font-size:44px;font-family:var(--display)"></p><div class="btnrow" id="qOpts"></div><div style="height:8px;background:#000"><div id="qBar" style="height:100%;width:100%;background:var(--corn)"></div></div><p class="note">Press 1, 2 or 3. The game is paused while you think, but the clock is ticking.</p></div>
+</div>
+
+<div class="screen" id="pause" hidden><h1>Paused</h1><p class="lead">Click to continue</p></div>
+
+<div class="screen" id="over" hidden>
+  <div class="card"><h1 style="color:var(--alert)">Game over</h1><p class="lead" id="overInfo"></p><div class="btnrow"><button id="retry">Try again</button><button id="toMenu1" class="alt">Main menu</button></div></div>
+</div>
+
+<div class="screen" id="win" hidden>
+  <div class="card"><h1>You escaped!</h1><p class="lead">All 10 corns and out the exit in <b id="winTime"></b>.</p><div class="btnrow"><button id="again">Play again</button><button id="toMenu2" class="alt">Main menu</button></div></div>
+</div>
+
+<script src="js/three.min.js"></script>
+<script>if(typeof THREE === 'undefined'){document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"><\\/script>');}</script>
+<script src="js/art.js"></script>
+<script src="js/audio.js"></script>
+<script src="js/world.js"></script>
+<script src="js/entities.js"></script>
+<script src="js/ai.js"></script>
+<script src="js/cast.js"></script>
+<script src="js/cast2.js"></script>
+<script src="js/events.js"></script>
+<script src="js/flood.js"></script>
+<script src="js/game.js"></script>
+<script src="js/menu.js"></script>
+<script src="js/touch-controls.js"></script>
+<script>
+  try { document.getElementById('cornIcon').src = Art.icon('corn').toDataURL(); } catch (e) {}
+  Game.setup(); Menu.init();
+</script>
+
+</body></html>
